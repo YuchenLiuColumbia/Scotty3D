@@ -7,13 +7,106 @@
 namespace CMU462 {
 
 VertexIter HalfedgeMesh::splitEdge(EdgeIter e0) {
-  // TODO: (meshEdit)
   // This method should split the given edge and return an iterator to the
   // newly inserted vertex. The halfedge of this vertex should point along
   // the edge that was split, rather than the new edges.
 
-  showError("splitEdge() not implemented.");
-  return VertexIter();
+  // All new elements needed in the splitted figure.
+  VertexIter v0 = newVertex();
+
+  HalfedgeIter h01 = newHalfedge(), 
+               h02 = newHalfedge(), 
+               h03 = newHalfedge(), 
+               h04 = newHalfedge(), 
+               h05 = newHalfedge(), 
+               h06 = newHalfedge(), 
+               h07 = newHalfedge(), 
+               h08 = newHalfedge();
+
+  EdgeIter e01 = newEdge(), 
+           e02 = newEdge(), 
+           e03 = newEdge(), 
+           e04 = newEdge();
+
+  FaceIter f1 = newFace(), 
+           f2 = newFace(), 
+           f3 = newFace(), 
+           f4 = newFace();
+
+  // Existing elements, and will be deleted after splitting.
+  HalfedgeIter h1 = e0->halfedge(), 
+               h2 = h1->twin();
+
+  FaceIter f01 = h1->face(),
+           f02 = h2->face();
+  // EdgeIter e0 should also be deleted after the operation.
+  
+  // Existing elements, and will still exist after splitting.
+  HalfedgeIter h3 = h1->next(), 
+               h4 = h3->next(), 
+               h5 = h2->next(), 
+               h6 = h5->next();
+
+  VertexIter v1 = h1->vertex(), 
+             v2 = h2->vertex(), 
+             v3 = h4->vertex(), 
+             v4 = h6->vertex();
+
+  EdgeIter e1 = h3->edge(), 
+           e2 = h4->edge(), 
+           e3 = h5->edge(), 
+           e4 = h6->edge();
+  
+  // Reassign relationships and values of *new pointers*.
+  v0->halfedge() = h01;
+  v0->position = (v1->position + v2->position) / 2.;
+
+  e01->halfedge() = h01;
+  e02->halfedge() = h03;
+  e03->halfedge() = h06;
+  e04->halfedge() = h08;
+
+  f1->halfedge() = h01;
+  f2->halfedge() = h03;
+  f3->halfedge() = h04;
+  f4->halfedge() = h02;
+
+  h01->edge() = e01; h01->face() = f1; h01->vertex() = v0; h01->twin() = h02; 
+  h01->next() = h3;
+  h02->edge() = e01; h02->face() = f4; h02->vertex() = v2; h02->twin() = h01;
+  h02->next() = h07;
+  h03->edge() = e02; h03->face() = f2; h03->vertex() = v1; h03->twin() = h04;
+  h03->next() = h06;
+  h04->edge() = e02; h04->face() = f3; h04->vertex() = v0; h04->twin() = h03;
+  h04->next() = h5;
+  h05->edge() = e03; h05->face() = f1; h05->vertex() = v3; h05->twin() = h06;
+  h05->next() = h01;
+  h06->edge() = e03; h06->face() = f2; h06->vertex() = v0; h06->twin() = h05;
+  h06->next() = h4;
+  h07->edge() = e04; h07->face() = f4; h07->vertex() = v0; h07->twin() = h08;
+  h07->next() = h6;
+  h08->edge() = e04; h08->face() = f3; h08->vertex() = v4; h08->twin() = h07;
+  h08->next() = h04;
+  
+  // Reassign relationships of *old pointers*.
+  h3->face() = f1, h3->next() = h05;
+  h4->face() = f2, h4->next() = h03;
+  h5->face() = f3, h5->next() = h08;
+  h6->face() = f4, h6->next() = h02;
+
+  v1->halfedge() = h5;
+  v2->halfedge() = h3;
+  v3->halfedge() = h4;
+  v4->halfedge() = h6;
+
+  // Delete extra elements.
+  deleteFace(f01);
+  deleteFace(f02);
+  deleteEdge(e0);
+  deleteHalfedge(h1);
+  deleteHalfedge(h2);
+
+  return v0;
 }
 
 VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
