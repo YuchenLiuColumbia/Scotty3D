@@ -1,5 +1,6 @@
 #include <float.h>
 #include <assert.h>
+#include <string>
 #include "meshEdit.h"
 #include "mutablePriorityQueue.h"
 #include "error_dialog.h"
@@ -10,6 +11,23 @@ VertexIter HalfedgeMesh::splitEdge(EdgeIter e0) {
   // This method should split the given edge and return an iterator to the
   // newly inserted vertex. The halfedge of this vertex should point along
   // the edge that was split, rather than the new edges.
+  
+  /* A basic pointer reference for *modified surface* is provided below.
+     Positions of halfedges could be infered accordingly.
+              v2
+               o
+              /|\
+          e1 / | \ e4
+            / e01 \
+           / f1|f4 \
+       v3 o-e03oe04-o v4
+           \ f2|f3 /
+            \ e02 /
+          e2 \ | / e3
+              \|/
+               o
+              v1
+  */
 
   // All new elements needed in the splitted figure.
   VertexIter v0 = newVertex();
@@ -71,23 +89,15 @@ VertexIter HalfedgeMesh::splitEdge(EdgeIter e0) {
   f3->halfedge() = h04;
   f4->halfedge() = h02;
 
-  h01->edge() = e01; h01->face() = f1; h01->vertex() = v0; h01->twin() = h02; 
-  h01->next() = h3;
-  h02->edge() = e01; h02->face() = f4; h02->vertex() = v2; h02->twin() = h01;
-  h02->next() = h07;
-  h03->edge() = e02; h03->face() = f2; h03->vertex() = v1; h03->twin() = h04;
-  h03->next() = h06;
-  h04->edge() = e02; h04->face() = f3; h04->vertex() = v0; h04->twin() = h03;
-  h04->next() = h5;
-  h05->edge() = e03; h05->face() = f1; h05->vertex() = v3; h05->twin() = h06;
-  h05->next() = h01;
-  h06->edge() = e03; h06->face() = f2; h06->vertex() = v0; h06->twin() = h05;
-  h06->next() = h4;
-  h07->edge() = e04; h07->face() = f4; h07->vertex() = v0; h07->twin() = h08;
-  h07->next() = h6;
-  h08->edge() = e04; h08->face() = f3; h08->vertex() = v4; h08->twin() = h07;
-  h08->next() = h04;
-  
+  h01->setNeighbors(h3, h02, v0, e01, f1);
+  h02->setNeighbors(h07, h01, v2, e01, f4);
+  h03->setNeighbors(h06, h04, v1, e02, f2);
+  h04->setNeighbors(h5, h03, v0, e02, f3);
+  h05->setNeighbors(h01, h06, v3, e03, f1);
+  h06->setNeighbors(h4, h05, v0, e03, f2);
+  h07->setNeighbors(h6, h08, v0, e04, f4);
+  h08->setNeighbors(h04, h07, v4, e04, f3);
+
   // Reassign relationships of *old pointers*.
   h3->face() = f1, h3->next() = h05;
   h4->face() = f2, h4->next() = h03;
@@ -110,12 +120,156 @@ VertexIter HalfedgeMesh::splitEdge(EdgeIter e0) {
 }
 
 VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
-  // TODO: (meshEdit)
   // This method should collapse the given edge and return an iterator to
   // the new vertex created by the collapse.
 
-  showError("collapseEdge() not implemented.");
-  return VertexIter();
+  // Pre-processing
+  if (e->isBoundary()) {
+    showError("Mesh contain boundaries cannot be collapsed.");
+    return e->halfedge()->vertex();
+  }
+
+  // Elements to be deleted after collapse.
+  
+  HalfedgeIter h0 = e->halfedge(),
+               h1 = h0->twin();
+  
+  VertexIter v01 = h0->vertex(),
+             v02 = h1->vertex();
+  // EdgeIter e should be deleted also.
+
+  // Elements that not sure to be deleted or not.
+  FaceIter f0 = h0->face(),
+           f1 = h1->face();
+
+  HalfedgeIter h01 = h0->next(),
+               h11 = h1->next(),
+               h02 = h01, 
+               h12 = h11;
+
+  while (h02->next() != h0) {
+    h02 = h02->next();
+  }
+
+  while (h12->next() != h1) {
+    h12 = h12->next();
+  }
+
+  EdgeIter e1 = h02->edge(),
+           e2 = h11->edge();
+  
+  // Elements to be modified, but not deleted.
+  HalfedgeIter h03 = h01->twin(),
+               h04 = h02->twin(),
+               h13 = h11->twin(),
+               h14 = h12->twin();
+
+  vector<HalfedgeIter> vertex_change_halfedge; //change ->vertex()
+  HalfedgeIter temp = h11;
+  while (temp->twin() != h02) {
+    temp = temp->twin()->next();
+    vertex_change_halfedge.push_back(temp);
+  }
+  temp = h01;
+  while (temp->twin() != h12) {
+    temp = temp->twin()->next();
+    vertex_change_halfedge.push_back(temp);
+  }
+
+  VertexIter v1 = h01->twin()->vertex(),
+             v2 = h02->vertex(),
+             v3 = h11->twin()->vertex(),
+             v4 = h12->vertex();
+
+  EdgeIter e3 = h01->edge(),
+           e4 = h12->edge();
+  
+  // This operation should be done before creating something new, to avoid
+  // messing up the logic.
+  bool f0_is_tri, f1_is_tri;
+  if (v1 == v2)
+    f0_is_tri = true;
+  if (v3 == v4)
+    f1_is_tri = true;
+  
+  if (f0_is_tri) {
+    if (h0->next()->edge()->isBoundary() || 
+      h0->next()->next()->edge()->isBoundary()) {
+      showError("Mesh contain boundaries cannot be collapsed.");
+      return h0->vertex();
+    }
+  }
+
+  if (f1_is_tri) {
+    if (h1->next()->edge()->isBoundary() || 
+      h1->next()->next()->edge()->isBoundary()) {
+      showError("Mesh contain boundaries cannot be collapsed.");
+      return h1->vertex();
+    }
+  }
+
+  // New vertex created.
+  VertexIter v = newVertex();
+  v->position = (v01->position + v02->position) / 2.;
+
+  // Remapping
+
+  // This is always true
+  v->halfedge() = h04;
+
+  if (f0_is_tri) {
+    h03->setNeighbors(h03->next(), h04, v1, e3, h03->face());
+    h04->setNeighbors(h04->next(), h03, v, e3, h04->face());
+    v1->halfedge() = h03;
+  }
+  else {
+    h01->setNeighbors(h01->next(), h03, v, e3, f0);
+    h02->setNeighbors(h01, h04, v2, e1, f0);
+    h03->setNeighbors(h03->next(), h01, v1, e3, h03->face());
+    h04->setNeighbors(h04->next(), h02, v, e1, h04->face());
+    f0->halfedge() = h01;
+  }
+  e3->halfedge() = h03;
+
+  if (f1_is_tri) {
+    h13->setNeighbors(h13->next(), h14, v3, e4, h13->face());
+    h14->setNeighbors(h14->next(), h13, v, e4, h14->face());
+    v3->halfedge() = h13;
+  }
+  else {
+    h11->setNeighbors(h11->next(), h13, v, e2, f1);
+    h12->setNeighbors(h14, h11, v4, e4, f1);
+    h13->setNeighbors(h13->next(), h14, v3, e4, h13->face());
+    h14->setNeighbors(h14->next(), h13, v, e4, h14->face());
+    f1->halfedge() = h11;
+  }
+  e4->halfedge() = h14;
+
+  for (int i = 0; i < vertex_change_halfedge.size(); i++) {
+    vertex_change_halfedge[i]->vertex() = v;
+  }  
+
+  
+  // Delete elements
+  if (f0_is_tri) {
+    deleteEdge(e1);
+    deleteHalfedge(h01);
+    deleteHalfedge(h02);
+    deleteFace(f0);
+  }
+  if (f1_is_tri) {
+    deleteEdge(e2);
+    deleteHalfedge(h11);
+    deleteHalfedge(h12);
+    deleteFace(f1);
+  }
+  deleteVertex(v01);
+  deleteVertex(v02);
+  deleteHalfedge(h0);
+  deleteHalfedge(h1);
+  deleteEdge(e);
+  
+  return v;
 }
 
 VertexIter HalfedgeMesh::collapseFace(FaceIter f) {
@@ -127,11 +281,81 @@ VertexIter HalfedgeMesh::collapseFace(FaceIter f) {
 }
 
 FaceIter HalfedgeMesh::eraseVertex(VertexIter v) {
-  // TODO: (meshEdit)
   // This method should replace the given vertex and all its neighboring
   // edges and faces with a single face, returning the new face.
 
-  return FaceIter();
+  // New elements needed for this feature.
+  FaceIter f0 = newFace();
+  // Existing elements, to be deleted.
+  vector<EdgeIter> edge_list;
+  vector<FaceIter> face_list;
+  vector<HalfedgeIter> halfedge_list;
+  vector<HalfedgeIter> to_be_deleted;
+
+  // Use an iteration to add all to-be-deleted elements into vector.
+  HalfedgeIter head = v->halfedge();
+  HalfedgeIter temp = head;
+
+  do {
+    halfedge_list.push_back(temp);
+    temp = temp->twin();
+    halfedge_list.push_back(temp);
+    edge_list.push_back(temp->edge());
+    face_list.push_back(temp->face());
+    temp = temp->next();
+  } while (temp != head);
+
+  // Assign new values to halfedges and vertices, and delete useless halfedges.
+  head = temp->next();
+  HalfedgeIter roam = head;
+
+  while (!halfedge_list.empty()) {
+    temp = halfedge_list[halfedge_list.size()-1];
+    halfedge_list.pop_back();
+    to_be_deleted.push_back(temp);
+    roam->vertex()->halfedge() = roam;
+    roam->face() = f0;
+
+    while (roam->next() != temp) {
+      roam = roam->next();
+      roam->face() = f0;
+    }
+
+    temp = halfedge_list[halfedge_list.size()-1];
+    halfedge_list.pop_back();
+    to_be_deleted.push_back(temp);
+    roam->next() = temp->next();
+    roam = roam->next();
+  }
+
+  // Here, head == roam.
+  f0->halfedge() = head;
+
+  // Delete useless edges, faces and vertices.
+  EdgeIter edge_deletion;
+  FaceIter face_deletion;
+
+  while (!edge_list.empty()) {
+    edge_deletion = edge_list[edge_list.size()-1];
+    edge_list.pop_back();
+    deleteEdge(edge_deletion);
+  }
+
+  while (!face_list.empty()) {
+    face_deletion = face_list[face_list.size()-1];
+    face_list.pop_back();
+    deleteFace(face_deletion);
+  }
+
+  deleteVertex(v);
+
+  while (!to_be_deleted.empty()) {
+    temp = to_be_deleted[to_be_deleted.size()-1];
+    to_be_deleted.pop_back();
+    deleteHalfedge(temp);
+  }
+
+  return f0;
 }
 
 FaceIter HalfedgeMesh::eraseEdge(EdgeIter e) {

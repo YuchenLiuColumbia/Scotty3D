@@ -25,9 +25,9 @@ Function | Status
 VertexBevel |:x:
 EdgeBevel   |:x:
 FaceBevel   |:x:
-EraseVertex |:x:
+EraseVertex |:white_check_mark:
 EraseEdge   |:x:
-EdgeCollapse|:x:
+EdgeCollapse|:white_check_mark:
 FaceCollapse|:x:
 EdgeFlip    |:x:
 EdgeSplit[T]|:white_check_mark:
