@@ -238,9 +238,9 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
   }
   else {
     h11->setNeighbors(h11->next(), h13, v, e2, f1);
-    h12->setNeighbors(h14, h11, v4, e4, f1);
-    h13->setNeighbors(h13->next(), h14, v3, e4, h13->face());
-    h14->setNeighbors(h14->next(), h13, v, e4, h14->face());
+    h12->setNeighbors(h11, h14, v4, e4, f1);
+    h13->setNeighbors(h13->next(), h11, v3, e2, h13->face());
+    h14->setNeighbors(h14->next(), h12, v, e4, h14->face());
     f1->halfedge() = h11;
   }
   e4->halfedge() = h14;
@@ -268,7 +268,6 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
   deleteHalfedge(h0);
   deleteHalfedge(h1);
   deleteEdge(e);
-  
   return v;
 }
 
@@ -276,16 +275,109 @@ VertexIter HalfedgeMesh::collapseFace(FaceIter f) {
   // TODO: (meshEdit)
   // This method should collapse the given face and return an iterator to
   // the new vertex created by the collapse.
-  showError("collapseFace() not implemented.");
-  return VertexIter();
+
+  // Old Elements to be deleted.
+  HalfedgeIter h = f->halfedge(),
+               temp = h,
+               dest = h;
+  vector<HalfedgeIter> halfedge_self_delete;
+  vector<HalfedgeIter> halfedge_twin_delete;
+  vector<EdgeIter> edge_delete;
+  vector<VertexIter> vertex_delete;
+  vector<FaceIter> face_delete;
+
+  do {
+    halfedge_self_delete.push_back(temp);
+    halfedge_twin_delete.push_back(temp->twin());
+    edge_delete.push_back(temp->edge());
+    vertex_delete.push_back(temp->vertex());
+    temp = temp->next();
+  } while (temp != h);
+  //std::cout << halfedge_self_delete.size() << ' ' << halfedge_twin_delete.size() << ' ' << edge_delete.size() << ' ' << vertex_delete.size() << ' ' << face_delete.size() << std::endl;
+
+  // The (size())th item in the vector is the same with the [0].
+  halfedge_self_delete.push_back(temp);
+  halfedge_twin_delete.push_back(temp->twin());
+  edge_delete.push_back(temp->edge());
+  vertex_delete.push_back(temp->vertex());
+
+  //std::cout << halfedge_self_delete.size() << ' ' << halfedge_twin_delete.size() << ' ' << edge_delete.size() << ' ' << vertex_delete.size() << ' ' << face_delete.size() << std::endl;
+
+  // New vertex created in the center of face.
+  VertexIter v = newVertex();
+  v->position = f->centroid();
+  
+  // Reassign linking relationships.
+  int count = edge_delete.size() - 1;
+  while (count > 0) {
+    // Deal with triangles
+    temp = halfedge_twin_delete[count];
+    dest = halfedge_twin_delete[count-1];
+    //std::cout << "temp: " << temp->getInfo()[2] << "temp-next: " << temp->getInfo()[4] << "temp-next-twin: " << temp->next()->getInfo()[3] << "dest" << dest->getInfo()[2] << std::endl;
+    while (temp->next() != dest) {
+      temp = temp->next();
+      temp->vertex() = v;
+      temp->edge()->halfedge() = temp;
+      temp->face()->halfedge() = temp;
+      temp = temp->twin();
+    }
+    // Deal with polygon (>3)
+    if (dest->next()->next() != temp) {
+      temp->next() = dest->next();
+      temp = temp->next();
+    }
+    // Deal with triangle on edge 
+    else {
+        //std::cout << halfedge_self_delete.size() << ' ' << halfedge_twin_delete.size() << ' ' << edge_delete.size() << ' ' << vertex_delete.size() << ' ' << face_delete.size() << std::endl;
+      temp = temp->twin();
+      temp->twin() = dest->next()->twin();
+      dest->next()->twin()->twin() = temp;
+      edge_delete.push_back(temp->edge());
+      face_delete.push_back(dest->face());
+      halfedge_self_delete.push_back(dest->next());
+      halfedge_self_delete.push_back(dest->next()->next());
+      temp->edge() = dest->next()->edge();
+      temp->twin()->vertex()->halfedge() = temp->twin();
+      dest->next() = temp;
+    }
+    count--;
+      //std::cout << halfedge_self_delete.size() << ' ' << halfedge_twin_delete.size() << ' ' << edge_delete.size() << ' ' << vertex_delete.size() << ' ' << face_delete.size() << std::endl;
+      //std::cout << "line left: " << temp->getInfo()[2] << "line right: " << temp->twin()->getInfo()[2] << "dest: " << dest->getInfo()[2] << "dest-next:" << dest->getInfo()[4] << std::endl;
+  }
+
+  v->halfedge() = temp;
+
+  // Delete useless elements.
+
+  for (int i = 1; i < halfedge_self_delete.size(); i++) {
+    deleteHalfedge(halfedge_self_delete[i]);
+  }
+  
+  for (int i = 1; i < halfedge_twin_delete.size(); i++) {
+    deleteHalfedge(halfedge_twin_delete[i]);
+  }
+
+  for (int i = 1; i < edge_delete.size(); i++) {
+    deleteEdge(edge_delete[i]);
+  }
+
+  for (int i = 1; i < vertex_delete.size(); i++) {
+    deleteVertex(vertex_delete[i]);
+  }
+
+  for (int i = 0; i < face_delete.size(); i++) {
+    deleteFace(face_delete[i]);
+  }
+  
+  deleteFace(f);
+
+  return v;
 }
 
 FaceIter HalfedgeMesh::eraseVertex(VertexIter v) {
   // This method should replace the given vertex and all its neighboring
   // edges and faces with a single face, returning the new face.
 
-  // New elements needed for this feature.
-  FaceIter f0 = newFace();
   // Existing elements, to be deleted.
   vector<EdgeIter> edge_list;
   vector<FaceIter> face_list;
@@ -295,8 +387,17 @@ FaceIter HalfedgeMesh::eraseVertex(VertexIter v) {
   // Use an iteration to add all to-be-deleted elements into vector.
   HalfedgeIter head = v->halfedge();
   HalfedgeIter temp = head;
+  Vector3D loc = head->face()->normal();
+  bool is_even = true;
 
   do {
+    // Check whether the erased faces are even.
+    if (is_even && (loc.x - temp->face()->normal().x > 0.01 ||
+      loc.y != temp->face()->normal().y > 0.01 || 
+      loc.z != temp->face()->normal().z > 0.01)) {
+      is_even = false;
+    }
+    // Iteration.
     halfedge_list.push_back(temp);
     temp = temp->twin();
     halfedge_list.push_back(temp);
@@ -304,6 +405,13 @@ FaceIter HalfedgeMesh::eraseVertex(VertexIter v) {
     face_list.push_back(temp->face());
     temp = temp->next();
   } while (temp != head);
+
+  if (!is_even) {
+    showError("Normals not even, might create non-manifold surface.");
+  }
+
+  // New elements needed for this feature.
+  FaceIter f0 = newFace();
 
   // Assign new values to halfedges and vertices, and delete useless halfedges.
   head = temp->next();
@@ -359,12 +467,96 @@ FaceIter HalfedgeMesh::eraseVertex(VertexIter v) {
 }
 
 FaceIter HalfedgeMesh::eraseEdge(EdgeIter e) {
-  // TODO: (meshEdit)
   // This method should erase the given edge and return an iterator to the
   // merged face.
 
-  showError("eraseVertex() not implemented.");
-  return FaceIter();
+  // Preprocess: check if is boundary.
+  if (e->isBoundary()) {
+    return e->halfedge()->face();
+  }
+
+  // Elements to be deleted.
+  HalfedgeIter h1 = e->halfedge(),
+               h2 = h1->twin();
+  
+  FaceIter f1 = h1->face(),
+           f2 = h2->face();
+  // EdgeIter e should also be deleted.
+
+  // Elements that not sure to be deleted or not.
+  VertexIter v1 = h1->vertex(),
+             v2 = h2->vertex();
+
+  // One line scenario. Strictly speaking, it should not happen if user is 
+  // operating properly. But life is hard, so we should take care of it.
+  if (h1->next() == h2 || h2->next() == h1) { 
+    if (f1 == f2) {
+      HalfedgeIter temp;
+      if (v1->degree() == 1) {
+        temp = h2->next();
+        while (temp->next() != h2)
+          temp = temp->next();
+        temp->next() = h1->next();
+        h2->vertex()->halfedge() = h1->next();
+        f1->halfedge() = h1->next();
+        deleteEdge(e);
+        deleteHalfedge(h1);
+        deleteHalfedge(h2);
+        deleteVertex(v1);
+        return f1;
+      }
+      else if (v2->degree() == 1) {
+        temp = h1->next();
+        while (temp->next() != h1)
+          temp = temp->next();
+        temp->next() = h2->next();
+        h1->vertex()->halfedge() = h2->next();
+        f1->halfedge() = h2->next();
+        deleteEdge(e);
+        deleteHalfedge(h1);
+        deleteHalfedge(h2);
+        deleteVertex(v2);
+        return f1;
+      }
+    }
+  }
+
+  // New face to be added. That happens in usual case.
+  FaceIter f = newFace();
+
+  // Elements only modified.
+  HalfedgeIter h12 = h1->next(),
+               h22 = h2->next(),
+               h11 = h12,
+               h21 = h22;
+  
+  while (h11->next() != h1) {
+    h11->face() = f;
+    h11 = h11->next();
+  }
+
+  while (h21->next() != h2) {
+    h21->face() = f;
+    h21 = h21->next();
+  }
+
+  // Reassign
+  h11->next() = h22;
+  h11->face() = f;
+  h21->next() = h12;
+  h21->face() = f;
+  v1->halfedge() = h22;
+  v2->halfedge() = h12;
+  f->halfedge() = h11;
+
+  // Delete useless elements.
+  deleteFace(f1);
+  deleteFace(f2);
+  deleteHalfedge(h1);
+  deleteHalfedge(h2);
+  deleteEdge(e);
+
+  return f;
 }
 
 EdgeIter HalfedgeMesh::flipEdge(EdgeIter e0) {

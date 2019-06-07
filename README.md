@@ -26,9 +26,9 @@ VertexBevel |:x:
 EdgeBevel   |:x:
 FaceBevel   |:x:
 EraseVertex |:white_check_mark:
-EraseEdge   |:x:
-EdgeCollapse|:white_check_mark:
-FaceCollapse|:x:
+EraseEdge   |:white_check_mark:
+EdgeCollapse|:red_check_mark:
+FaceCollapse|:red_check_mark:
 EdgeFlip    |:x:
 EdgeSplit[T]|:white_check_mark:
 Triangulate                  |:x:
