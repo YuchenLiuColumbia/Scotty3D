@@ -27,7 +27,7 @@ EdgeBevel   |:x:
 FaceBevel   |:x:
 EraseVertex |:white_check_mark:
 EraseEdge   |:white_check_mark:
-EdgeCollapse|:heavy_check_mark:
+EdgeCollapse|:white_check_mark:
 FaceCollapse|:heavy_check_mark:
 EdgeFlip    |:x:
 EdgeSplit[T]|:white_check_mark:

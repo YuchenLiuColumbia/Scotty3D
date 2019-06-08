@@ -5,6 +5,8 @@
 #include "mutablePriorityQueue.h"
 #include "error_dialog.h"
 
+using namespace std;
+
 namespace CMU462 {
 
 VertexIter HalfedgeMesh::splitEdge(EdgeIter e0) {
@@ -130,7 +132,6 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
   }
 
   // Elements to be deleted after collapse.
-  
   HalfedgeIter h0 = e->halfedge(),
                h1 = h0->twin();
   
@@ -147,13 +148,8 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
                h02 = h01, 
                h12 = h11;
 
-  while (h02->next() != h0) {
-    h02 = h02->next();
-  }
-
-  while (h12->next() != h1) {
-    h12 = h12->next();
-  }
+  while (h02->next() != h0) { h02 = h02->next(); }
+  while (h12->next() != h1) { h12 = h12->next(); }
 
   EdgeIter e1 = h02->edge(),
            e2 = h11->edge();
@@ -170,11 +166,13 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     temp = temp->twin()->next();
     vertex_change_halfedge.push_back(temp);
   }
+  
   temp = h01;
   while (temp->twin() != h12) {
     temp = temp->twin()->next();
     vertex_change_halfedge.push_back(temp);
   }
+  
 
   VertexIter v1 = h01->twin()->vertex(),
              v2 = h02->vertex(),
@@ -184,9 +182,13 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
   EdgeIter e3 = h01->edge(),
            e4 = h12->edge();
   
+  // New vertex created.
+  VertexIter v = newVertex();
+  
   // This operation should be done before creating something new, to avoid
   // messing up the logic.
-  bool f0_is_tri, f1_is_tri;
+  // BOOL VALUES MUST BE SET WHEN DECLARED.
+  bool f0_is_tri = false, f1_is_tri = false;
   if (v1 == v2)
     f0_is_tri = true;
   if (v3 == v4)
@@ -208,15 +210,11 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     }
   }
 
-  // New vertex created.
-  VertexIter v = newVertex();
-  v->position = (v01->position + v02->position) / 2.;
+  // This is always true
+  v->position = e->centroid();
+  v->halfedge() = h03->next();
 
   // Remapping
-
-  // This is always true
-  v->halfedge() = h04;
-
   if (f0_is_tri) {
     h03->setNeighbors(h03->next(), h04, v1, e3, h03->face());
     h04->setNeighbors(h04->next(), h03, v, e3, h04->face());
@@ -227,7 +225,8 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     h02->setNeighbors(h01, h04, v2, e1, f0);
     h03->setNeighbors(h03->next(), h01, v1, e3, h03->face());
     h04->setNeighbors(h04->next(), h02, v, e1, h04->face());
-    f0->halfedge() = h01;
+    f0->halfedge() = h02;
+    e1->halfedge() = h02;
   }
   e3->halfedge() = h03;
 
@@ -242,14 +241,15 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     h13->setNeighbors(h13->next(), h11, v3, e2, h13->face());
     h14->setNeighbors(h14->next(), h12, v, e4, h14->face());
     f1->halfedge() = h11;
+    e2->halfedge() = h11;
   }
   e4->halfedge() = h14;
+
 
   for (int i = 0; i < vertex_change_halfedge.size(); i++) {
     vertex_change_halfedge[i]->vertex() = v;
   }  
 
-  
   // Delete elements
   if (f0_is_tri) {
     deleteEdge(e1);
@@ -257,17 +257,20 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     deleteHalfedge(h02);
     deleteFace(f0);
   }
+
   if (f1_is_tri) {
     deleteEdge(e2);
     deleteHalfedge(h11);
     deleteHalfedge(h12);
     deleteFace(f1);
   }
+
   deleteVertex(v01);
   deleteVertex(v02);
   deleteHalfedge(h0);
   deleteHalfedge(h1);
   deleteEdge(e);
+
   return v;
 }
 
