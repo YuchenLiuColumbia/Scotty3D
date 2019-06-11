@@ -25,13 +25,13 @@ Function | Status
 VertexBevel |:x:
 EdgeBevel   |:x:
 FaceBevel   |:x:
-EraseVertex |:white_check_mark:
-EraseEdge   |:white_check_mark:
-EdgeCollapse|:white_check_mark:
-FaceCollapse|:heavy_check_mark:
-EdgeFlip    |:x:
-EdgeSplit[T]|:white_check_mark:
-Triangulate                  |:x:
+EraseVertex |:heavy_check_mark:
+EraseEdge   |:heavy_check_mark:
+EdgeCollapse|:heavy_check_mark:
+FaceCollapse|:white_check_mark:
+EdgeFlip    |:heavy_check_mark:
+EdgeSplit[T]|:heavy_check_mark:
+Triangulate                  |:heavy_check_mark:
 Linear Subdivision           |:x:
 Catmull-Clark Subdivision[B] |:x:
 Loop Subdivision[B]          |:x:

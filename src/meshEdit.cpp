@@ -1,6 +1,7 @@
 #include <float.h>
 #include <assert.h>
 #include <string>
+#include <stdlib.h>
 #include "meshEdit.h"
 #include "mutablePriorityQueue.h"
 #include "error_dialog.h"
@@ -567,8 +568,81 @@ EdgeIter HalfedgeMesh::flipEdge(EdgeIter e0) {
   // This method should flip the given edge and return an iterator to the
   // flipped edge.
 
-  showError("flipEdge() not implemented.");
-  return EdgeIter();
+  HalfedgeIter h0 = e0->halfedge();
+  // Preprocessing
+  if (e0->isBoundary() || h0->face()->isBoundary() || 
+    h0->twin()->face()->isBoundary()) {
+    return e0;
+  }
+
+  if (h0->face()->degree() != 3 || h0->twin()->face()->degree() != 3) {
+    if (abs(h0->face()->normal().x) - abs(h0->twin()->face()->normal().x) > 0.0001 ||
+      abs(h0->face()->normal().y) - abs(h0->twin()->face()->normal().y) > 0.0001 ||
+      abs(h0->face()->normal().z) - abs(h0->twin()->face()->normal().z) > 0.0001) {
+      showError("Edge cannot be flipped.");
+      return e0;
+    }
+  }
+
+  // Elements to be modified
+  // HalfedgeIter h0 has been defined
+  HalfedgeIter h1 = h0->twin(),
+               h01 = h0->next(),
+               h02 = h01->next(),
+               h11 = h1->next(),
+               h12 = h11->next(),
+               h03 = h02,
+               h13 = h12;
+
+  while (h03->next() != h0) {
+    h03 = h03->next();
+  }
+
+  while (h13->next() != h1) {
+    h13 = h13->next();
+  }
+
+  VertexIter v0 = h0->vertex(),
+             v1 = h1->vertex(),
+             v2 = h02->vertex(),
+             v3 = h12->vertex();
+  
+  FaceIter f0 = h0->face(),
+           f1 = h1->face();
+  cout << v0->position <<v1->position << v2->position << v3->position << endl;
+  cout << f0->degree() << endl;
+
+  // Another preprocessing about non-exist face
+  if (f0->degree() == 3 && 
+    ((v0->position - v2->position).unit() - 
+    (v3->position - v0->position).unit()).norm2() < 0.001) {
+    showError("Edge cannot be flipped.");
+    return e0;
+  }
+  if (f1->degree() == 3 &&
+    ((v3->position - v1->position).unit() - 
+    (v1->position - v2->position).unit()).norm2() < 0.001) {
+    showError("Edge cannot be flipped.");
+    return e0;
+  }
+  
+  // Reassign
+  v0->halfedge() = h11;
+  v1->halfedge() = h01;
+  v2->halfedge() = h02;
+  v3->halfedge() = h12;
+
+  h0->setNeighbors(h02, h1, v3, e0, f0);
+  h1->setNeighbors(h12, h0, v2, e0, f1);
+  h01->setNeighbors(h1, h01->twin(), v1, h01->edge(), f1);
+  h03->next() = h11;
+  h11->setNeighbors(h0, h11->twin(), v0, h11->edge(), f0);
+  h13->next() = h01;
+
+  f0->halfedge() = h0;
+  f1->halfedge() = h1;
+
+  return e0;
 }
 
 void HalfedgeMesh::subdivideQuad(bool useCatmullClark) {
@@ -588,36 +662,15 @@ void HalfedgeMesh::subdivideQuad(bool useCatmullClark) {
   // efficient) than incrementally modifying the existing one.  These steps are
   // detailed below.
 
-  // TODO Step I: Compute the vertex positions for the subdivided mesh.  Here
-  // we're
-  // going to do something a little bit strange: since we will have one vertex
-  // in
-  // the subdivided mesh for each vertex, edge, and face in the original mesh,
-  // we
-  // can nicely store the new vertex *positions* as attributes on vertices,
-  // edges,
-  // and faces of the original mesh.  These positions can then be conveniently
-  // copied into the new, subdivided mesh.
-  // [See subroutines for actual "TODO"s]
+  // Step I: Compute the vertex positions for the subdivided mesh.
   if (useCatmullClark) {
     computeCatmullClarkPositions();
   } else {
     computeLinearSubdivisionPositions();
   }
 
-  // TODO Step II: Assign a unique index (starting at 0) to each vertex, edge,
-  // and
-  // face in the original mesh.  These indices will be the indices of the
-  // vertices
-  // in the new (subdivided mesh).  They do not have to be assigned in any
-  // particular
-  // order, so long as no index is shared by more than one mesh element, and the
-  // total number of indices is equal to V+E+F, i.e., the total number of
-  // vertices
-  // plus edges plus faces in the original mesh.  Basically we just need a
-  // one-to-one
-  // mapping between original mesh elements and subdivided mesh vertices.
-  // [See subroutine for actual "TODO"s]
+  // Step II: Assign a unique index (starting at 0) to each vertex, edge,
+  // andface in the original mesh.
   assignSubdivisionIndices();
 
   // TODO Step III: Build a list of quads in the new (subdivided) mesh, as
@@ -654,16 +707,19 @@ void HalfedgeMesh::subdivideQuad(bool useCatmullClark) {
  * centroids.
  */
 void HalfedgeMesh::computeLinearSubdivisionPositions() {
-  // TODO For each vertex, assign Vertex::newPosition to
-  // its original position, Vertex::position.
+  for (auto v = vertices.begin(); v != vertices.end(); v++) {
+    v->newPosition = v->position;
+  }
 
-  // TODO For each edge, assign the midpoint of the two original
-  // positions to Edge::newPosition.
+  for (auto e = edges.begin(); e != edges.end(); e++) {
+    e->newPosition = e->centroid();
+  }
 
-  // TODO For each face, assign the centroid (i.e., arithmetic mean)
-  // of the original vertex positions to Face::newPosition.  Note
-  // that in general, NOT all faces will be triangles!
-  showError("computeLinearSubdivisionPositions() not implemented.");
+  for (auto f = faces.begin(); f != faces.end(); f++) {
+    f->newPosition = f->centroid();
+  }
+
+  return;
 }
 
 /**
@@ -696,15 +752,21 @@ void HalfedgeMesh::computeCatmullClarkPositions() {
  * subdivided using Catmull-Clark (or linear) subdivision.
  */
 void HalfedgeMesh::assignSubdivisionIndices() {
-  // TODO Start a counter at zero; if you like, you can use the
-  // "Index" type (defined in halfedgeMesh.h)
+  Index count = 0;
 
-  // TODO Iterate over vertices, assigning values to Vertex::index
+  for (auto v = vertices.begin(); v != vertices.end(); v++) {
+    v->index = count++;
+  }
 
-  // TODO Iterate over edges, assigning values to Edge::index
+  for (auto e = edges.begin(); e != edges.end(); e++) {
+    e->index = count++;
+  }
 
-  // TODO Iterate over faces, assigning values to Face::index
-  showError("assignSubdivisionIndices() not implemented.");
+  for (auto f = faces.begin(); f != faces.end(); f++) {
+    f->index = count++;
+  }
+
+  return;
 }
 
 /**
@@ -872,7 +934,40 @@ void HalfedgeMesh::splitPolygons(vector<FaceIter>& fcs) {
 void HalfedgeMesh::splitPolygon(FaceIter f) {
   // TODO: (meshedit) 
   // Triangulate a polygonal face
-  showError("splitPolygon() not implemented.");
+  if (f->degree() == 3) {
+    return;
+  }
+  // New Elements
+  FaceIter f1 = newFace();
+  EdgeIter e1 = newEdge();
+  HalfedgeIter h0 = newHalfedge(),
+               h1 = newHalfedge();
+  
+  // Old Elements to be changed
+  HalfedgeIter h00 = f->halfedge(),
+               h01 = h00->next(),
+               h02 = h01->next(),
+               h03 = h02;
+  
+  while (h03->next() != h00) {
+    h03 = h03->next();
+  }
+  
+  // Reassign
+  f1->halfedge() = h1;
+  e1->halfedge() = h0;
+  h01->next() = h0;
+  h01->face() = f;
+  h0->setNeighbors(h00, h1, h02->vertex(), e1, f);
+  h1->setNeighbors(h02, h0, h00->vertex(), e1, f1);
+  h03->next() = h1;
+  while (h02 != h1) {
+    h02->face() = f1;
+    h02 = h02->next();
+  }
+
+  splitPolygon(f1);
+  return;
 }
 
 EdgeRecord::EdgeRecord(EdgeIter& _edge) : edge(_edge) {
