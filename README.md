@@ -32,9 +32,9 @@ FaceCollapse|:white_check_mark:
 EdgeFlip    |:heavy_check_mark:
 EdgeSplit[T]|:heavy_check_mark:
 Triangulate                  |:heavy_check_mark:
-Linear Subdivision           |:x:
-Catmull-Clark Subdivision[B] |:x:
-Loop Subdivision[B]          |:x:
+Linear Subdivision           |:heavy_check_mark:
+Catmull-Clark Subdivision[B] |:heavy_check_mark:
+Loop Subdivision[B]          |:heavy_check_mark:
 Isotropic Remeshing[T]       |:x:
 Simplification[T]            |:x:
 
