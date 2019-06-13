@@ -265,12 +265,12 @@ VertexIter HalfedgeMesh::collapseEdge(EdgeIter e) {
     deleteHalfedge(h12);
     deleteFace(f1);
   }
-
   deleteVertex(v01);
   deleteVertex(v02);
   deleteHalfedge(h0);
   deleteHalfedge(h1);
   deleteEdge(e);
+
 
   return v;
 }
@@ -601,18 +601,18 @@ EdgeIter HalfedgeMesh::flipEdge(EdgeIter e0) {
   
   FaceIter f0 = h0->face(),
            f1 = h1->face();
-
+  
   // Another preprocessing about non-exist face
   if (f0->degree() == 3 && 
     ((v0->position - v2->position).unit() - 
     (v3->position - v0->position).unit()).norm2() < 0.001) {
-    showError("Edge cannot be flipped.");
+    showError("Some Edge Flipping here may create non-manifold surfaces.");
     return e0;
   }
   if (f1->degree() == 3 &&
     ((v3->position - v1->position).unit() - 
     (v1->position - v2->position).unit()).norm2() < 0.001) {
-    showError("Edge cannot be flipped.");
+    showError("Some Edge Flipping here may create non-manifold surfaces.");
     return e0;
   }
   
@@ -989,7 +989,7 @@ void MeshResampler::upsample(HalfedgeMesh& mesh)
     float u = 0.;
     do {
       sum += temp->twin()->vertex()->position;
-      degree ++;
+      degree++;
       temp = temp->twin()->next();
     } while (temp != end);
 
@@ -1020,7 +1020,7 @@ void MeshResampler::upsample(HalfedgeMesh& mesh)
   for (int i = 0; i < count; i++) {
     // Get the next edge in a temp iterator
     EdgeIter next_edge = e;
-    next_edge ++;
+    next_edge++;
     
     // Split the previous edge
     Vector3D this_pos = e->newPosition;
@@ -1077,17 +1077,110 @@ void MeshResampler::downsample(HalfedgeMesh& mesh) {
 }
 
 void MeshResampler::resample(HalfedgeMesh& mesh) {
-  // TODO: (meshEdit)
-  // Compute the mean edge length.
-  // Repeat the four main steps for 5 or 6 iterations
-  // -> Split edges much longer than the target length (being careful about
-  //    how the loop is written!)
-  // -> Collapse edges much shorter than the target length.  Here we need to
-  //    be EXTRA careful about advancing the loop, because many edges may have
-  //    been destroyed by a collapse (which ones?)
-  // -> Now flip each edge if it improves vertex degree
-  // -> Finally, apply some tangential smoothing to the vertex positions
-  showError("resample() not implemented.");
+  double total_length = 0.;
+  float avg_length = 0., top_length = 0., bot_length = 0.;
+  for (auto e = mesh.edgesBegin(); e != mesh.edgesEnd(); e++) {
+    total_length += e->length();
+  }
+  avg_length = total_length / mesh.nEdges();
+  top_length = avg_length * (4./3);
+  bot_length = avg_length * (4./5);
+
+  // Main Iteration Loop
+  for (int i = 0; i < 5; i++) {
+    // Step 1: Split overlength edges
+    int edge_num = mesh.nEdges();
+    EdgeIter e = mesh.edgesBegin();
+
+    for (int j = 0; j < edge_num; j++) {
+      EdgeIter next_edge = e;
+      next_edge++;
+      
+      if (e->length() > top_length) {
+        mesh.splitEdge(e);
+      }  
+      // Go to next edge
+      e = next_edge;
+    }
+
+    // Step 2: Collapse short edges. Since some edge might be created
+    // in last step with too short length, we must update edge number.
+    edge_num = mesh.nEdges();
+    e = mesh.edgesBegin();
+
+    for (int j = 0; j < edge_num; j++) {
+      EdgeIter next_edge = e;
+      next_edge++;
+
+      // First, if it's to be collapsed
+      if (e->length() < bot_length) {
+        // There's a bug using this method and I can't figure out why...
+        /*
+        if ((next_edge == e->halfedge()->next()->next()->edge() || 
+            next_edge == e->halfedge()->twin()->next()->edge()) &&
+            next_edge != mesh.edgesEnd()) {
+              next_edge++;
+            }
+        if ((next_edge == e->halfedge()->next()->next()->edge() || 
+            next_edge == e->halfedge()->twin()->next()->edge()) &&
+            next_edge != mesh.edgesEnd()){
+              next_edge++;
+            }
+        */
+        mesh.collapseEdge(e);
+        // This method works fine for small meshes.
+        e = mesh.edgesBegin();
+        edge_num -= 2;
+      }
+      else {
+      e = next_edge;
+      }
+    }
+
+    // Step 3: Flip edges for reduce deviation from degree 6
+    int a1 = 0, 
+        b1 = 0, 
+        a2 = 0, 
+        b2 = 0;
+
+    for (e = mesh.edgesBegin(); e != mesh.edgesEnd(); e++) {
+      a1 = e->halfedge()->vertex()->degree();
+      a2 = e->halfedge()->twin()->vertex()->degree();
+      b1 = e->halfedge()->next()->next()->vertex()->degree();
+      b2 = e->halfedge()->twin()->next()->next()->vertex()->degree();
+
+      if (abs(a1-6) + abs(a2-6) + abs(b1-6) + abs(b2-6) > 
+          abs(a1-7) + abs(a2-7) + abs(b1-5) + abs(b2-5)) {
+        mesh.flipEdge(e);
+      }
+    }
+
+    // Step 4: Apply tangential smoothing
+    float w = 1. / 5;
+    int smooth_num = 15,
+        count = 0;
+
+    for (int j = 0; j < smooth_num; j++) {
+      vector<Vector3D> centroids;
+      vector<Vector3D> normals;
+      // Get all original data so that the change won't affect it
+      for (auto v = mesh.verticesBegin(); v != mesh.verticesEnd(); v++) {
+        centroids.push_back(v->neighborhoodCentroid());
+        normals.push_back(v->normal());
+      }
+
+      count = 0;
+      // Move vertices
+      for (auto v = mesh.verticesBegin(); v != mesh.verticesEnd(); v++) {
+        v->position = v->position + w * ((centroids[count] - v->position) - 
+          dot(normals[count], (centroids[count] - v->position)) * 
+          normals[count]);    
+        count++;
+      }
+    }
+  }
+
+  return;
 }
 
 }  // namespace CMU462
